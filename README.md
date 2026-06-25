@@ -11,7 +11,6 @@ site/
 ├── js/main.js              ← 移动端菜单、滚动动画
 ├── assets/
 │   ├── img/                ← 放照片和项目图（me.jpg, proj1.jpg ...）
-│   └── 你的简历.pdf         ← 简历放这里，改 index.html 里的链接
 └── projects/
     ├── project-template.html    ← 新建项目时复制这个（空白骨架）
     ├── infantry-control.html     ← 步兵电控系统（已写满的完整范例，照着填）
