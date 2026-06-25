@@ -1,6 +1,6 @@
 # 个人 RoboMaster 主页 — 使用说明
 
-参照学术个人主页（Kevin Xu 风格的导航与项目页结构）+ 交龙战队的 RoboMaster 内容词汇构建。
+参照学术个人主页构建。
 纯静态站点：HTML + CSS + JS，**无需编译**，可直接用浏览器打开或部署到 GitHub Pages。
 
 ## 文件结构
