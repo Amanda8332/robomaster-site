@@ -1,0 +1,113 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无人机飞控与对地打击 | 邓皓月</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="../index.html"><img class="brand-logo" src="../SPR机器人协会图标.jpg" alt="SPR机器人协会">邓皓月<span class="dot">.</span></a>
+    <button class="nav-toggle" aria-label="菜单">≡</button>
+    <ul class="nav-links">
+      <li><a href="../index.html#about">关于</a></li>
+      <li><a href="../index.html#timeline">赛季经历</a></li>
+      <li><a href="../index.html#projects" class="active">项目</a></li>
+      <li><a href="../index.html#skills">技能</a></li>
+      <li><a href="../index.html#contact">联系</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="detail-head">
+  <div class="container">
+    <a class="back" href="../index.html#projects">← 返回项目列表</a>
+    <h1>无人机飞控与对地打击</h1>
+    <p class="sub">围绕空中机器人飞控适配、姿态调试、定点悬停与对地打击链路展开，提升无人机在比赛环境中的稳定飞行与抗扰能力。</p>
+  </div>
+</header>
+
+<div class="container">
+  <div class="detail-figure">
+    <img src="../无人机.jpg" alt="空中机器人项目展示图">
+  </div>
+</div>
+
+<div class="container">
+  <div class="detail-body">
+    <article>
+      <h2>背景与目标</h2>
+      <p>空中机器人承担空中侦察、目标支援与对地任务执行等职责，对飞控鲁棒性和姿态控制精度要求极高。比赛场景中既存在风扰、负载变化，也存在通道映射和控制切换带来的不确定性，因此飞控链路必须兼顾稳定性、响应速度与可调试性。</p>
+      <p>本项目参考 RoboMaster AutoUAV 开源飞行器方案的总体思路，围绕 ArduPilot / Pixhawk 飞控、机载算力平台、视觉定位模块与遥控链路完成适配和联调，使无人机能够稳定完成起飞、悬停、定点控制与对地支援动作。</p>
+
+      <h2>我的职责</h2>
+      <ul>
+        <li>负责无人机飞控适配、通道映射与姿态控制参数调试；</li>
+        <li>参与姿态/高度稳定性优化，处理悬停漂移、抗风扰和模式切换问题；</li>
+        <li>参考开源方案完成飞控、机载计算平台与视觉定位接口的联通验证；</li>
+        <li>对接对地打击链路，完成姿态稳定与任务动作之间的联调；</li>
+        <li>在比赛前完成飞行测试、异常排查与参数收敛。</li>
+      </ul>
+
+      <h2>技术方案</h2>
+      <p>整体控制链路参考 AutoUAV 方案中的分层思路构建：底层由 Pixhawk 与 ArduPilot 负责姿态稳定、基础飞行和遥控模式切换，中层通过机载算力平台处理视觉定位或任务逻辑，上层再将控制需求转换为定高、定点或任务执行指令。</p>
+      <p>飞控控制链路按姿态、角速度与任务控制分层处理。姿态层根据目标姿态产生角速度给定，角速度层快速抑制机体扰动，高度与位置控制在悬停阶段提供稳定参考，同时将任务动作与飞行状态做互锁，避免未稳定时进入执行态。</p>
+      <pre><code>// 姿态控制主链路
+gyro_ref = PID_att(att_ref, att_est);       // 姿态环
+motor_out = PID_rate(gyro_ref, gyro_est);   // 角速度环
+
+// 悬停控制
+throttle_ref = PID_alt(height_ref, height_est);
+
+// 任务互锁
+if (attitude_stable && height_stable) {
+  enable_attack_mode();
+}</code></pre>
+      <p>在实现中重点参考了开源方案中的几个环节：机体线路连接与电调接线顺序、Mission Planner 固件/参数配置、遥控信道映射、首次飞行前的 IMU 与电机校准，以及 Jetson NX 与 Realsense 视觉定位模块的接口预留。调试过程中通过多轮飞行测试不断缩小参数范围，使悬停与机动阶段的表现都更可控。</p>
+
+      <h2>遇到的问题与解决</h2>
+      <div class="problem-list">
+        <p><b>问题 1：悬停时存在持续小幅漂移。</b>初期悬停状态下无人机会缓慢偏移，姿态虽然基本稳定，但位置保持不理想。排查中发现姿态环参数偏保守、通道映射细节和油门中值设置不完全匹配。后续通过重新校准映射关系、细化姿态环与高度环参数，悬停稳定性得到明显改善。</p>
+        <p><b>问题 2：风扰下机体回正速度偏慢。</b>在室外测试或气流变化时，无人机在受到扰动后恢复较慢，影响任务动作的连续性。我针对角速度环进行重新整定，提高扰动下的收敛能力，并结合测试结果优化姿态环输出限幅，使整机在抗风扰场景下更平稳。</p>
+        <p><b>问题 3：飞控与机载算力平台串口链路不稳定。</b>在飞控与机载计算平台联通时，串口波特率、接口定义和供电状态不一致会导致状态数据异常。排查后，我重新检查 TELEM 口与 UART 口连接关系，统一链路配置，并在联调前增加基础连通性检查，降低了接口问题对飞行调试的影响。</p>
+        <p><b>问题 4：遥控信道与飞行模式映射容易出错。</b>模式切换、油门和姿态通道配置不一致时，会直接影响首次飞行安全。我参考开源方案中的遥控配置流程重新核对信道分配、行程与反向设置，并在地面站完成校准后再进入实飞阶段，避免了模式错切或控制方向异常。</p>
+        <p><b>问题 5：对地动作与飞行状态存在冲突。</b>在执行任务动作时，若飞控尚未完全稳定，会导致姿态轻微波动被进一步放大。为此我在飞行状态机中加入稳定判定与任务互锁逻辑，仅在姿态与高度都满足条件时才允许进入动作执行阶段，降低了飞行与任务链路相互干扰的问题。</p>
+      </div>
+
+      <h2>成果</h2>
+      <ul>
+        <li>完成无人机飞控适配、姿态调试与对地任务链路联调；</li>
+        <li>参考开源方案打通 Pixhawk、遥控链路、机载算力平台和视觉接口的联调流程；</li>
+        <li>提升悬停精度、抗风扰能力和飞行状态切换的稳定性；</li>
+        <li>建立更清晰的飞行测试与问题闭环流程，缩短赛前排障时间。</li>
+      </ul>
+    </article>
+
+    <aside class="detail-aside">
+      <h4>项目信息</h4>
+      <dl>
+        <dt>赛季 / 时间</dt><dd>2025 赛季</dd>
+        <dt>角色</dt><dd>无人机电控 / 飞控调试</dd>
+        <dt>机器人</dt><dd>空中机器人（无人机）</dd>
+        <dt>飞控</dt><dd>Pixhawk 2.4.8 / ArduPilot</dd>
+        <dt>机载算力</dt><dd>Jetson NX · Realsense D430 接口预留</dd>
+        <dt>电机 / 电调</dt><dd>无刷动力系统 · DShot / PWM 控制链路</dd>
+        <dt>关键技术</dt><dd>姿态/高度控制 · 定点悬停 · 遥控映射 · 视觉定位接口</dd>
+      </dl>
+    </aside>
+  </div>
+</div>
+
+<footer>
+  <div class="container">© 2026 邓皓月 · RoboMaster 嵌软 / 电控 · 中国石油大学（北京）</div>
+</footer>
+
+<script src="../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>步兵机器人电控系统 | 邓皓月</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="../index.html"><img class="brand-logo" src="../SPR机器人协会图标.jpg" alt="SPR机器人协会">邓皓月<span class="dot">.</span></a>
+    <button class="nav-toggle" aria-label="菜单">≡</button>
+    <ul class="nav-links">
+      <li><a href="../index.html#about">关于</a></li>
+      <li><a href="../index.html#timeline">赛季经历</a></li>
+      <li><a href="../index.html#projects" class="active">项目</a></li>
+      <li><a href="../index.html#skills">技能</a></li>
+      <li><a href="../index.html#contact">联系</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="detail-head">
+  <div class="container">
+    <a class="back" href="../index.html#projects">← 返回项目列表</a>
+    <h1>步兵机器人电控系统</h1>
+    <p class="sub">基于 STM32F4 + FreeRTOS 的步兵整车电控方案：覆盖麦轮全向底盘、Yaw/Pitch 双轴云台、摩擦轮发射与供弹，以及裁判系统功率控制。担任电控主控。</p>
+  </div>
+</header>
+
+<div class="container">
+  <div class="detail-figure">
+    <img src="https://jiaoloong.sjtu.edu.cn/_astro/leg_blue.BJfAqQi8_Z1hp64x.webp" alt="步兵机器人项目展示图">
+  </div>
+</div>
+
+<div class="container">
+  <div class="detail-body">
+    <article>
+
+      <h2>背景与目标</h2>
+      <p>步兵机器人是 RoboMaster 赛场中的核心作战单元，承担机动压制、火力输出与战术执行等关键任务。其电控系统既要保证底盘在复杂地形中的稳定运动，又要保证云台、发射与自瞄链路在高速运动中的实时响应。</p>
+      <p>本项目的目标是完成步兵整车电控闭环建设，打通底盘、云台、发射、通信与功率控制链路，在满足裁判系统限制的前提下提升整车的机动稳定性、远射精度与联调效率，为赛场实战提供可靠支撑。</p>
+
+      <h2>系统架构</h2>
+      <p>电控以 STM32F4（Cortex-M4，168 MHz，带 FPU）作为主控，运行 FreeRTOS 进行多任务调度。各执行机构通过 CAN 总线连接，遥控器经 DBUS 串口接入，裁判系统经 UART 实时上报血量与功率状态。整体按「底盘 / 云台 / 发射 / 通信」四个任务划分，通过消息机制解耦。</p>
+      <pre><code>主控 STM32F4 (FreeRTOS)
+├── 底盘任务   ── CAN1 ──> 4× M3508 + C620 电调（麦轮）
+├── 云台任务   ── CAN2 ──> GM6020 (Yaw) / GM6020 (Pitch)
+│                └── SPI ──> BMI088 IMU（姿态反馈）
+├── 发射任务   ── CAN1 ──> 2× M3508（摩擦轮） + M2006（拨盘）
+└── 通信任务   ── UART ──> DR16 遥控器 / 裁判系统
+                  └── 预留 ──> 上位机（视觉自瞄）</code></pre>
+      <p>整套架构将运动控制、姿态控制、发射机构与通信管理拆分为独立任务，通过周期调度与共享数据结构统一管理状态量，保证各环节在联调阶段可独立排障、可整体联测。</p>
+
+      <h2>我的职责</h2>
+      <ul>
+        <li>负责步兵电控<b>整体框架</b>搭建与 FreeRTOS 任务划分、优先级与周期设计；</li>
+        <li>实现<b>底盘麦克纳姆轮运动学解算</b>与四轮速度闭环 PID；</li>
+        <li>实现<b>云台 Yaw/Pitch 双闭环串级 PID</b>，引入 IMU 姿态反馈做车体运动补偿；</li>
+        <li>实现<b>发射控制</b>：摩擦轮转速闭环、拨盘按射频供弹与防卡弹逻辑；</li>
+        <li>对接<b>裁判系统</b>，做底盘功率限制下的实时功率分配；</li>
+        <li>负责整车联调、赛前调参与赛场故障排查。</li>
+      </ul>
+      <p>在 2025 赛季中，我以步兵主控视角统筹整车电控开发与联调，重点推进云台控制、发射控制、自瞄接口对接以及赛场问题闭环。</p>
+
+      <h2>技术方案</h2>
+
+      <h3 style="font-family:var(--font-display);font-size:1.1rem;color:var(--ink);margin:1.5rem 0 .5rem;">① 底盘：麦轮运动学解算 + 速度闭环</h3>
+      <p>麦克纳姆轮底盘把遥控器/上位机给定的三个速度分量（前后 Vx、左右 Vy、旋转 ω）解算为四个轮子的目标转速，再对每个轮子做 PID 速度闭环。引入 IMU 的 Yaw 角做底盘跟随云台的方向修正。</p>
+      <pre><code>// 麦轮逆运动学：底盘速度 -> 四轮目标转速
+wheel[0] =  Vx - Vy - (L + W) * w;   // 左前
+wheel[1] =  Vx + Vy - (L + W) * w;   // 右前
+wheel[2] = -Vx + Vy - (L + W) * w;   // 右后
+wheel[3] = -Vx - Vy - (L + W) * w;   // 左后
+// 每个轮子再走一个增量式 PID 速度环，输出电流给 C620 电调</code></pre>
+      <p>在功率受限场景下，进一步对四轮目标转速进行统一缩放，保证运动方向正确的前提下优先维持操控连续性，减少急停、急转过程中的打滑和失速现象。</p>
+
+      <h3 style="font-family:var(--font-display);font-size:1.1rem;color:var(--ink);margin:1.5rem 0 .5rem;">② 云台：双闭环串级 PID + 重力前馈</h3>
+      <p>云台采用「位置环（外）+ 速度环（内）」的串级结构：外环用 IMU 的角度做反馈，内环用 IMU 的角速度做反馈，抗扰能力远强于单纯的电机编码器闭环。Pitch 轴叠加重力前馈，抵消俯仰时的重力矩，减小静差和电机负载。</p>
+      <pre><code>// 云台 Pitch 串级：角度环输出作为角速度环给定
+gyro_set = PID_pos(angle_target, imu.pitch);          // 外环
+current  = PID_spd(gyro_set,     imu.gyro_pitch)      // 内环
+         + gravity_feedforward(imu.pitch);            // 重力前馈补偿</code></pre>
+      <p>在自瞄场景下，云台控制还需要与视觉给定角速度、角度偏差和发射节奏协同工作，因此在控制链路中额外处理了目标切换、角度限幅和状态切换时的突变抑制问题。</p>
+
+      <h3 style="font-family:var(--font-display);font-size:1.1rem;color:var(--ink);margin:1.5rem 0 .5rem;">③ 发射：摩擦轮转速闭环 + 拨盘防卡弹</h3>
+      <p>两个摩擦轮做转速闭环保证弹速稳定（裁判系统对射速有上限）；拨盘电机（M2006）按设定射频供弹。防卡弹逻辑：检测拨盘电流/转速异常时，自动反转一定角度再恢复，避免连发时卡死。</p>
+      <p>发射控制不仅要满足射频与弹速约束，还要兼顾裁判系统功率限制下的电流调配，因此在摩擦轮与拨盘控制上采用分层状态管理，降低发射瞬时负载对底盘与云台控制的干扰。</p>
+
+      <h2>遇到的问题与解决</h2>
+      <div class="problem-list">
+        <p><b>问题 1：高速机动时云台出现抖振，影响连续瞄准。</b>在底盘急停、急转和飞坡后，云台会出现短时回摆，导致准星难以稳定锁定目标。排查后发现主要原因是位置环增益偏激进、角速度反馈滞后，以及底盘扰动引入时状态切换不够平滑。针对这一问题，我重新梳理了云台串级 PID 参数，增强速度内环带宽，对切换过程加入限幅和过渡处理，并细化不同工况下的参数分组。优化后，云台在动态过程中跟随更平顺，抖振明显减轻。</p>
+        <p><b>问题 2：远距离射击精度波动较大。</b>在中远距离连续射击时，弹着点离散度偏大，影响远射命中效果。定位时发现问题并非只来自弹道模型本身，还和摩擦轮转速波动、目标距离分段标定粗糙以及发射节奏不稳定有关。为此，我将弹道解算与发射机构闭环调速联动，重新整理距离分段补偿参数，并对自瞄给定与实际发射状态之间的同步逻辑做了修正。调整后，远射的一致性更高，弹道补偿更加稳定。</p>
+        <p><b>问题 3：功率限制下底盘机动性下降明显。</b>比赛过程中，裁判系统的功率约束会导致底盘在加速和转向时出现响应突降。排查中发现，底盘、云台和发射机构在高负载时会竞争电流预算，导致控制输出不连续。我对底盘功率限制策略和超级电容逻辑进行了协同调整，将关键执行机构的优先级重新分配，并优化了功率缩放与恢复过程。这样在高压对抗场景下，整车机动性更稳定，联调过程中的功率波动也更容易控制。</p>
+        <p><b>问题 4：CAN 总线在多设备联调阶段偶发延迟。</b>底盘、云台、发射与上位机链路同时开启时，部分状态量刷新会出现抖动，导致控制反馈不够连贯。我对不同设备的发送周期与任务优先级进行重新梳理，减少冗余帧发送，并对关键状态量增加超时判定，提升了总线通信的稳定性与可观测性。</p>
+        <p><b>问题 5：发射节奏提升后出现供弹不顺与卡弹风险。</b>在高射频阶段，拨盘与摩擦轮的状态不同步时容易导致供弹阻滞。针对这一问题，我在状态机中加入了拨盘电流、速度异常判定和短时反转脱困逻辑，并重构了发射前置条件检查，使发射链路在连续输出时更稳定。</p>
+      </div>
+
+      <h2>成果</h2>
+      <ul>
+        <li>完成步兵底盘、云台、发射与通信链路的一体化电控闭环，实现整车稳定联调。</li>
+        <li>解决云台抖振、远射精度波动和功率受限下机动性下降等关键问题，提升赛场实战可用性。</li>
+        <li>打通自瞄弹道解算与发射机构闭环调速链路，提高动态场景下的输出一致性。</li>
+        <li>助力战队获得东部赛区前八名。</li>
+      </ul>
+
+    </article>
+
+    <aside class="detail-aside">
+      <h4>项目信息</h4>
+      <dl>
+        <dt>赛季 / 时间</dt><dd>2025 赛季</dd>
+        <dt>角色</dt><dd>电控主控</dd>
+        <dt>机器人</dt><dd>步兵</dd>
+        <dt>主控</dt><dd>STM32F407</dd>
+        <dt>系统</dt><dd>FreeRTOS</dd>
+        <dt>关键技术</dt><dd>麦轮解算 · 双环 PID · 弹道 · CAN · 功率控制</dd>
+        <dt>电机</dt><dd>M3508 · GM6020 · M2006</dd>
+      </dl>
+    </aside>
+  </div>
+</div>
+
+<footer>
+  <div class="container">© 2026 邓皓月 · RoboMaster 嵌软 / 电控 · 中国石油大学（北京）</div>
+</footer>
+
+<script src="../js/main.js"></script>
+</body>
+</html>
