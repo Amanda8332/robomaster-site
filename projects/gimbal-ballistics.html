@@ -1,0 +1,111 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>云台双环控制与弹道解算 | 邓皓月</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="../index.html"><img class="brand-logo" src="../SPR机器人协会图标.jpg" alt="SPR机器人协会">邓皓月<span class="dot">.</span></a>
+    <button class="nav-toggle" aria-label="菜单">≡</button>
+    <ul class="nav-links">
+      <li><a href="../index.html#about">关于</a></li>
+      <li><a href="../index.html#timeline">赛季经历</a></li>
+      <li><a href="../index.html#projects" class="active">项目</a></li>
+      <li><a href="../index.html#skills">技能</a></li>
+      <li><a href="../index.html#contact">联系</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="detail-head">
+  <div class="container">
+    <a class="back" href="../index.html#projects">← 返回项目列表</a>
+    <h1>云台双环控制与弹道解算</h1>
+    <p class="sub">围绕步兵机器人云台的 Yaw/Pitch 串级控制、重力前馈补偿与自瞄弹道建模展开，实现动态场景下的稳定瞄准与远射补偿。</p>
+  </div>
+</header>
+
+<div class="container">
+  <div class="detail-figure detail-figure-contain detail-figure-dark detail-figure-gimbal">
+    <img src="../全向轮步兵.jpg" alt="云台双环控制与弹道解算主图">
+  </div>
+</div>
+
+<div class="container">
+  <div class="detail-body">
+    <article>
+      <h2>背景与目标</h2>
+      <p>云台控制与弹道解算是步兵射击链路中的核心模块。赛场上机器人经常处于高速移动、急停急转和复杂扰动状态，若云台姿态控制不稳定或发射角求解不准确，会直接影响命中率和持续压制能力。</p>
+      <p>本项目参考弹道求解相关公开方案，对无空气阻力解析解、一次/二次空气阻力模型、边界条件判定和嵌入式实时优化方法进行整理，并将这些思路落到步兵云台控制与自瞄补偿链路中，实现更稳定的中远距离射击补偿。</p>
+
+      <h2>我的职责</h2>
+      <ul>
+        <li>负责 Yaw/Pitch 双轴云台的位置环与速度环串级控制设计与参数整定；</li>
+        <li>实现 Pitch 轴重力前馈补偿以及目标切换时的限幅与状态过渡；</li>
+        <li>参与自瞄链路对接，完成无空气阻力解析解与经验补偿结合的弹道求解实现；</li>
+        <li>根据距离、弹速、重力和阻力影响进行参数测量与误差修正；</li>
+        <li>在赛前联调中定位并解决云台抖振、远射离散度大、求解不稳定等问题。</li>
+      </ul>
+
+      <h2>技术方案</h2>
+      <p>控制层采用“角度外环 + 角速度内环”的双闭环结构，外环负责目标角度收敛，内环负责快速抑制扰动并提升响应速度。Pitch 轴在串级控制基础上加入重力前馈，降低不同俯仰角下的静差和响应迟滞。</p>
+      <p>弹道求解部分优先采用无空气阻力模型的解析解作为快速初值，在飞行时间较长、目标距离较远时再结合空气阻力模型和经验修正表做补偿。这样既能保证嵌入式平台上的计算效率，也能提升中远距离射击时的拟合精度。</p>
+      <pre><code>// 云台串级控制
+gyro_ref = PID_pos(angle_ref, imu_angle);      // 外环：角度误差
+motor_out = PID_spd(gyro_ref, imu_gyro)        // 内环：角速度误差
+          + ff_gravity(pitch_angle);           // 重力前馈
+
+// 弹道求解：先用解析解给初值，再做补偿
+pitch_ref = solve_no_drag(distance, height, bullet_speed);
+pitch_ref += drag_comp(distance, bullet_speed);
+pitch_ref += table_comp(distance);</code></pre>
+      <p>在实现上，我重点吸收了几个思路：一是先判断目标是否处于可达射程内，避免无解条件下迭代发散；二是将距离、弹速、装甲高度差作为统一输入结构，减少代码分支；三是利用上一时刻解作为本时刻初值，降低连续跟踪中的迭代次数，提高实时性。</p>
+
+      <h2>遇到的问题与解决</h2>
+      <div class="problem-list">
+        <p><b>问题 1：高速机动时云台来回抖动。</b>在底盘剧烈运动后，云台会出现短周期震荡，尤其在急停后的重新瞄准阶段更明显。排查后发现外环响应过快、内环带宽不足，且不同姿态下参数没有很好区分。我重新分离了 Yaw 与 Pitch 的调参逻辑，提升内环响应能力，并对状态切换增加过渡处理，最终显著减轻了回摆现象。</p>
+        <p><b>问题 2：远距离射击落点分散。</b>最初的弹道补偿模型只考虑理论下坠，忽略了发射机构实际弹速变化与不同距离段的非线性误差。后续我把摩擦轮闭环转速、距离分段参数和经验修正表统一管理，并在联调中反复校准补偿曲线，提升了远射一致性。</p>
+        <p><b>问题 3：解析模型在部分边界场景下出现无解或收敛不稳。</b>当目标接近射程极限或高差较大时，直接数值迭代容易出现不收敛或求解结果跳变。我增加了射程可达性预判，并优先使用无空气阻力解析解作为初值，再在有需要时做有限次修正，降低了迭代失败概率。</p>
+        <p><b>问题 4：弹速波动直接传入求解器导致瞄准角抖动。</b>如果将瞬时弹速直接作为输入，求解角会在连续射击中来回波动。为此我对弹速输入增加滤波和平滑处理，并将求解结果与经验修正表结合，避免因单发速度波动导致云台频繁微调。</p>
+        <p><b>问题 5：移动目标切换时上一时刻解无法直接复用。</b>连续跟踪中利用时间相关性可以明显减少计算量，但目标快速切换时旧解会成为干扰。我在目标切换时重置初值策略，在连续跟踪时复用上一帧解，在切换时退回解析初值，兼顾稳定性与实时性。</p>
+        <p><b>问题 6：理论模型与机械结构误差之间存在偏差。</b>实际发射中还会受到摩擦轮一致性、枪管装配、公差和后坐扰动影响，仅靠理论模型难以完全覆盖。我将理论求解、距离分段补偿和赛场经验标定结合起来，使模型能够落到真实机构条件下稳定工作。</p>
+      </div>
+
+      <h2>成果</h2>
+      <ul>
+        <li>完成云台双环控制、重力补偿与弹道求解器的一体化实现；</li>
+        <li>将解析解、阻力修正、经验补偿和实时优化策略整合到嵌入式控制链路中；</li>
+        <li>提升动态场景下的目标跟踪稳定性与中远距离射击一致性；</li>
+        <li>支撑步兵整车自瞄联调，为比赛阶段稳定发挥提供算法侧支撑。</li>
+      </ul>
+    </article>
+
+    <aside class="detail-aside">
+      <h4>项目信息</h4>
+      <dl>
+        <dt>赛季 / 时间</dt><dd>2025 赛季</dd>
+        <dt>角色</dt><dd>步兵主控 / 云台控制</dd>
+        <dt>机器人</dt><dd>步兵</dd>
+        <dt>主控</dt><dd>STM32F407</dd>
+        <dt>关键技术</dt><dd>双环 PID · IMU 姿态反馈 · 重力前馈 · 弹道解算</dd>
+        <dt>协同模块</dt><dd>视觉自瞄 · 发射机构 · 云台电机控制</dd>
+      </dl>
+    </aside>
+  </div>
+</div>
+
+<footer>
+  <div class="container">© 2026 邓皓月 · RoboMaster 嵌软 / 电控 · 中国石油大学（北京）</div>
+</footer>
+
+<script src="../js/main.js"></script>
+</body>
+</html>

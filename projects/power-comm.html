@@ -1,0 +1,112 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>超级电容与无线充电系统 | 邓皓月</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="../index.html"><img class="brand-logo" src="../SPR机器人协会图标.jpg" alt="SPR机器人协会">邓皓月<span class="dot">.</span></a>
+    <button class="nav-toggle" aria-label="菜单">≡</button>
+    <ul class="nav-links">
+      <li><a href="../index.html#about">关于</a></li>
+      <li><a href="../index.html#timeline">赛季经历</a></li>
+      <li><a href="../index.html#projects" class="active">项目</a></li>
+      <li><a href="../index.html#skills">技能</a></li>
+      <li><a href="../index.html#contact">联系</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="detail-head">
+  <div class="container">
+    <a class="back" href="../index.html#projects">← 返回项目列表</a>
+    <h1>超级电容与无线充电系统</h1>
+    <p class="sub">围绕双向 Buck-Boost 超级电容控制器与 LCC-S 无线充电系统展开，完成能量管理、动能回收、ASK 通讯与 120W 级无线充电联调。</p>
+  </div>
+</header>
+
+<div class="container">
+  <div class="detail-figure detail-figure-contain">
+    <img src="../超级电容主图.png" alt="超级电容与无线充电系统主图">
+  </div>
+</div>
+
+<div class="container">
+  <div class="detail-body">
+    <article>
+      <h2>背景与目标</h2>
+      <p>在新赛季能量限制规则下，机器人系统不再只是面对简单的功率约束，而是需要围绕“能量获取、能量存储、能量回收和能量调度”做整体设计。超级电容系统需要在裁判系统限制内完成高响应能量调配，无线充电系统则需要在补能阶段高效、安全地向电容组充能。</p>
+      <p>本项目参考《RM2025 超级电容与无线充电系统技术方案》的架构思路，对双向 Buck-Boost 超级电容控制器、峰值电流内环、数字外环、ASK / FSK 通讯和 LCC-S 无线充电链路进行整理，并将其压缩成适合个人项目展示的工程化页面。</p>
+
+      <h2>我的职责</h2>
+      <ul>
+        <li>围绕超级电容控制与无线充电系统梳理硬件拓扑、控制链路和保护逻辑；</li>
+        <li>整理双向 Buck-Boost 功率级、峰值电流控制与数字外环的核心实现思路；</li>
+        <li>归纳无线充电发射端、接收端和 ASK / FSK 通讯链路的协同方式；</li>
+        <li>提炼关键问题闭环，用项目化表达呈现系统设计、调试与保护策略。</li>
+      </ul>
+
+      <h2>技术方案</h2>
+      <p>超级电容部分采用双向四开关 Buck-Boost 架构，使电容组电压可以高于、等于或低于底盘电压；无线充电部分采用全桥逆变 + LCC-S 谐振拓扑，发射端和接收端通过 ASK / FSK 方式完成握手与功率反馈。两套系统最终汇总到同一套能量管理逻辑中。</p>
+      <pre><code>// 超级电容控制主链路
+read_adc();                         // 采样 vA / vB / iA / iB / iR
+mode = select_mode_by_voltage();   // Buck / Buck-Boost / Boost
+peak_i_ref = outer_loop_control(); // 功率环 / 电压环 / 电流限制环竞争输出
+set_dac_threshold(peak_i_ref);     // 峰值电流内环阈值
+
+// 无线充电主链路
+tx_full_bridge();                  // 发射端全桥逆变 + LCC-S 谐振
+rx_buck_charge();                  // 接收端降压给电容组充电
+ask_feedback(power, enable_bit);   // 反馈接收功率与开关需求</code></pre>
+      <p>控制上最关键的设计是“峰值电流内环 + 数字外环”。峰值电流内环利用 STM32G474 的 HRTIM、比较器、DAC 与高速模拟外设在硬件层快速限制电感电流，数字外环则以约 62.5kHz 运行裁判系统功率环、电容组电压环和电流限制环，最终共同决定目标电流。</p>
+      <p>无线充电部分则重点处理发射端功率传输、接收端 Buck 充电、ASK 解码和状态机联动，使系统在补能阶段可以以 120W 级功率安全充入电容组，并在异常状态下及时关断输出。</p>
+
+      <h2>遇到的问题与解决</h2>
+      <div class="problem-list">
+        <p><b>问题 1：纯数字控制方案响应速度难以继续提升。</b>仅靠软件环路提高响应速度会受到 MCU 运算负担和采样带宽限制，环路一旦提得太快，其他保护与交互逻辑就容易被挤压。为此，系统引入峰值电流内环，将电感电流控制尽量下沉到模拟外设和 HRTIM 硬件层，使电流响应进入 20us 级别，同时释放 MCU 资源给外环与保护逻辑。</p>
+        <p><b>问题 2：Buck / Buck-Boost / Boost 模式切换容易产生抖动。</b>占空比靠近边界时，模式如果切换过于频繁会造成电流波动和控制不连续。报告中通过电压比估算占空比，并在状态机中加入施密特触发和模式冗余区间，我在页面中保留了这套思路，用于解释为何不同模式切换能够保持平滑。</p>
+        <p><b>问题 3：上管常开若依赖隔离电源会带来较高静态功耗。</b>传统做法实现简单，但静态损耗偏高，不利于能量利用。该方案通过类似电荷泵的方式实现上管常开，显著降低静态功耗，并减少额外器件占用，这也是整套硬件方案的一个亮点。</p>
+        <p><b>问题 4：电容低压区放电能力受限，若控制不当会导致系统不稳定。</b>电容组在低电压时虽然仍能输出能量，但功率能力会快速下降。为此系统将低压限制与放电截止做成独立约束，并让电容电压环、电流限制环和功率环竞争输出，保证在低压区优先保护系统本身。</p>
+        <p><b>问题 5：无线充电链路不仅要传能，还要可靠通讯。</b>未对准、充电功率变化和线圈电压幅值波动都会影响通信解码。方案中通过 ASK / FSK 双链路设计、发射端状态机和接收端功率反馈，使发射端能够根据接收端功率与开关需求动态调整输出，避免盲目持续充电。</p>
+        <p><b>问题 6：保护系统需要足够快，否则短路和过压风险极高。</b>超级电容与无线充电系统都涉及大功率能量流，一旦短路或失控会迅速损坏功率级。方案利用 ADC 模拟看门狗、HRTIM Fault Line、短路计数器和错误分级机制实现分层保护，在短路测试中能够快速关断，减少火花和损伤风险。</p>
+        <p><b>问题 7：无线充电与超级电容系统融合后，异常工况变得更复杂。</b>例如底盘断电、无线充电仍在工作、或接口短路时，都可能造成保险丝熔断或器件损坏。文档中对这些未来改进方向有明确记录，我在页面中保留这些工程风险说明，用来体现系统设计对极端场景的考虑。</p>
+      </div>
+
+      <h2>成果</h2>
+      <ul>
+        <li>完成超级电容控制器与无线充电系统的整体方案梳理与项目化呈现；</li>
+        <li>提炼双向 Buck-Boost、峰值电流内环、数字外环、ASK / FSK 通讯等关键技术点；</li>
+        <li>明确了动能回收、主动充电限制、纯电容模式和分级保护等工程亮点；</li>
+        <li>将原始技术报告压缩为更适合个人网站展示与面试交流的版本。</li>
+      </ul>
+    </article>
+
+    <aside class="detail-aside">
+      <h4>项目信息</h4>
+      <dl>
+        <dt>赛季 / 时间</dt><dd>2025-2026 方案参考</dd>
+        <dt>角色</dt><dd>系统梳理 / 功率链路分析</dd>
+        <dt>系统</dt><dd>超级电容控制器 + 无线充电系统</dd>
+        <dt>主控</dt><dd>STM32G474RBT3</dd>
+        <dt>关键技术</dt><dd>双向 Buck-Boost · 峰值电流控制 · LCC-S · ASK / FSK</dd>
+        <dt>协同模块</dt><dd>裁判系统 · 底盘供电 · 电容组 · 无线充电发射端/接收端</dd>
+      </dl>
+    </aside>
+  </div>
+</div>
+
+<footer>
+  <div class="container">© 2026 邓皓月 · RoboMaster 嵌软 / 电控 · 中国石油大学（北京）</div>
+</footer>
+
+<script src="../js/main.js"></script>
+</body>
+</html>
